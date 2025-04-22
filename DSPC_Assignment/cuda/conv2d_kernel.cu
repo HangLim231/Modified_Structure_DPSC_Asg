@@ -56,7 +56,7 @@ void conv2d_forward(
     dim3 grid((H_out * W_out + 255) / 256, C_out, N);
     dim3 block(256);
 
-    conv2d_forward_kernel << <grid, block >> > (
+    conv2d_forward_kernel <<<grid, block>>> (
         d_input, d_weights, d_bias, d_output,
         N, C_in, H, W, C_out, K
         );

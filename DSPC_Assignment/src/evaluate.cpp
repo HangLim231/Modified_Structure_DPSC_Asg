@@ -3,6 +3,18 @@
 #include "../include/evaluate.h"
 using namespace std;
 
+int argmax(const float* logits, int num_classes) {
+    int max_index = 0;
+    float max_value = logits[0];
+    for (int i = 1; i < num_classes; i++) {
+        if (logits[i] > max_value) {
+            max_value = logits[i];
+            max_index = i;
+        }
+    }
+    return max_index;
+}
+
 float calculate_accuracy(const vector<int>& predictions, const vector<int>& labels) {
     int correct = 0;
     for (size_t i = 0; i < predictions.size(); ++i) {
