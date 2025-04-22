@@ -2,12 +2,10 @@
 #include "include/loader.h"
 #include "include/evaluate.h"
 #include "include/model.h"
+#include "include/train_cuda.h"
 #include <iostream>
 #include <vector>
 using namespace std;
-
-// Declare the function prototype instead of including the .cu file
-void train_cuda(const vector<Image>& dataset);
 
 int main() {
     vector<string> batch_files = {

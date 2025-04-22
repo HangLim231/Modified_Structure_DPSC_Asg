@@ -142,7 +142,6 @@
     <ClCompile Include="src\loader.cpp" />
     <ClCompile Include="src\model.cpp" />
     <ClCompile Include="src\timer.cpp" />
-    <ClCompile Include="train\train_cuda.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\evaluate.h" />
@@ -150,6 +149,7 @@
     <ClInclude Include="include\loader.h" />
     <ClInclude Include="include\model.h" />
     <ClInclude Include="include\timer.h" />
+    <ClInclude Include="include\train_cuda.h" />
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="cuda\conv2d_kernel.cu" />

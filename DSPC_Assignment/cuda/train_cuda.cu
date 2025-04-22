@@ -3,6 +3,7 @@
 #include "../include/model.h"
 #include "../include/loader.h"
 #include "../include/evaluate.h"
+#include "../include/train_cuda.h"
 #include <cuda_runtime.h>
 #include <iostream>
 using namespace std;
