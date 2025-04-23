@@ -102,8 +102,8 @@ float evaluateBatch(float* d_input, int* d_labels, Model& model, int batch_size)
 // Main function to train the model using CUDA
 void train_cuda(const vector<Image>& dataset) {
     // Training hyperparameters
-    const int epochs = 5;
-    const int batch_size = 64;
+    const int epochs = 10;
+    const int batch_size = 128;
     const int validation_size = 1000;  // Number of samples for validation
 
     // Constants
@@ -157,29 +157,24 @@ void train_cuda(const vector<Image>& dataset) {
     CUDA_CHECK(cudaMemcpy(d_val_labels, h_val_labels, sizeof(int) * validation_size,
         cudaMemcpyHostToDevice));
 
-    Timer epoch_timer;
-    Timer batch_timer;
+    Timer total_timer;
+    total_timer.start();
 
     // Training loop
     for (int epoch = 0; epoch < epochs; epoch++) {
         cout << "\nEpoch " << epoch + 1 << "/" << epochs << endl;
-        epoch_timer.start();
 
-        // Create batches with shuffled indices
         vector<vector<int>> batches = createBatches(train_size, batch_size);
-
-        float epoch_loss = 0.0f;
-        int batch_count = 0;
+        float epoch_accuracy = 0.0f;
+        int total_batches = batches.size();
 
         // Process each batch
-        for (const auto& batch_indices : batches) {
+        for (size_t batch_idx = 0; batch_idx < batches.size(); batch_idx++) {
+            const auto& batch_indices = batches[batch_idx];
             int current_batch_size = batch_indices.size();
-            batch_timer.start();
 
-            // Prepare batch data
+            // Prepare and process batch
             prepareBatch(train_data, batch_indices, h_batch_data, h_batch_labels);
-
-            // Copy batch to device
             CUDA_CHECK(cudaMemcpy(d_batch_data, h_batch_data,
                 sizeof(float) * current_batch_size * IMAGE_PIXELS,
                 cudaMemcpyHostToDevice));
@@ -187,35 +182,29 @@ void train_cuda(const vector<Image>& dataset) {
                 sizeof(int) * current_batch_size,
                 cudaMemcpyHostToDevice));
 
-            // In a real implementation, you would:
-            // 1. Perform forward pass
-            // 2. Calculate loss
-            // 3. Backpropagation (not implemented in this example)
-            // 4. Update weights
+            float batch_accuracy = evaluateBatch(d_batch_data, d_batch_labels, model, current_batch_size);
+            epoch_accuracy += batch_accuracy;
 
-            // For demonstration, we'll just do inference
-            float accuracy = evaluateBatch(d_batch_data, d_batch_labels, model, current_batch_size);
-
-            batch_timer.stop();
-
-            // Print progress every few batches
-            if (++batch_count % 10 == 0) {
-                cout << "  Batch " << batch_count << "/" << batches.size()
-                    << ", Accuracy: " << fixed << setprecision(4) << accuracy
-                    << ", Time: " << batch_timer.elapsedMilliseconds() << " ms" << endl;
+            // Print progress every 10%
+            if (batch_idx % (total_batches / 10) == 0) {
+                cout << "  Progress: " << (batch_idx * 100) / total_batches << "%, "
+                    << "Batch Accuracy: " << fixed << setprecision(2) << batch_accuracy * 100 << "%" << endl;
             }
         }
 
-        // Validate after each epoch
-        cout << "Validating..." << endl;
+        epoch_accuracy /= total_batches;
         float val_accuracy = evaluateBatch(d_val_data, d_val_labels, model, validation_size);
 
-        epoch_timer.stop();
-        cout << "Epoch completed in " << epoch_timer.elapsedMilliseconds() << " ms" << endl;
-        cout << "Validation accuracy: " << fixed << setprecision(4) << val_accuracy << endl;
+        cout << "Epoch " << epoch + 1 << " Summary:" << endl;
+        cout << "  Training Accuracy: " << fixed << setprecision(2) << epoch_accuracy * 100 << "%" << endl;
+        cout << "  Validation Accuracy: " << fixed << setprecision(2) << val_accuracy * 100 << "%" << endl;
     }
 
-    cout << "\nTraining completed!" << endl;
+    total_timer.stop();
+    cout << "\n===== Training Summary =====" << endl;
+    cout << "Total training time: " << fixed << setprecision(2)
+        << total_timer.elapsedSeconds() << " s" << endl;
+
 
     // Clean up
     delete[] h_batch_data;

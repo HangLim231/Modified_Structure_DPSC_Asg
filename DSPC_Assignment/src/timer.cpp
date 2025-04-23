@@ -16,6 +16,6 @@ void Timer::stop() {
 }
 
 // Get elapsed time in milliseconds
-double Timer::elapsedMilliseconds() const {
-    return std::chrono::duration<double, std::milli>(end_time - start_time).count();
+double Timer::elapsedSeconds() const {
+    return std::chrono::duration<double>(end_time - start_time).count();
 }

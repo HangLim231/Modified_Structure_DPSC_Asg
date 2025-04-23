@@ -84,7 +84,7 @@ int main() {
     cout << "Dataset loaded successfully! " << endl;
     cout << "  - Total images: " << dataset.size() << endl;
     cout << "  - Image dimensions: " << IMAGE_SIZE << "x" << IMAGE_SIZE << " pixels" << endl;
-    cout << "  - Loading time: " << fixed << setprecision(2) << loading_timer.elapsedMilliseconds() << " ms" << endl;
+    cout << "  - Loading time: " << fixed << setprecision(2) << loading_timer.elapsedSeconds() << " s" << endl;
 
     // Distribution of classes in the dataset
     vector<int> class_distribution(NUM_CLASSES, 0);
@@ -110,7 +110,7 @@ int main() {
     training_timer.stop();
     cout << "\nCUDA training completed!" << endl;
     cout << "  - Total training time: " << fixed << setprecision(2)
-        << training_timer.elapsedMilliseconds() << " ms" << endl;
+        << training_timer.elapsedSeconds() << " s" << endl;
 
     // Check for any CUDA errors after training
     cudaError_t cudaStatus = cudaGetLastError();
