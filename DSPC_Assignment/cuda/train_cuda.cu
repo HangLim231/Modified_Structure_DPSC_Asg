@@ -66,7 +66,7 @@ void prepareBatch(const vector<Image>& dataset, const vector<int>& batch_indices
 // Function to evaluate model on a batch
 float evaluateBatch(float* d_input, int* d_labels, Model& model, int batch_size) {
     float* d_output;
-    CUDA_CHECK(cudaMalloc(&d_output, sizeof(float) * batch_size * NUM_CLASSES));
+    cudaMalloc(&d_output, sizeof(float) * batch_size * NUM_CLASSES);
 
     // Forward pass
     model.forward(d_input, d_output, batch_size);
@@ -75,10 +75,10 @@ float evaluateBatch(float* d_input, int* d_labels, Model& model, int batch_size)
     float* h_output = new float[batch_size * NUM_CLASSES];
     int* h_labels = new int[batch_size];
 
-    CUDA_CHECK(cudaMemcpy(h_output, d_output, sizeof(float) * batch_size * NUM_CLASSES,
-        cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_labels, d_labels, sizeof(int) * batch_size,
-        cudaMemcpyDeviceToHost));
+    cudaMemcpy(h_output, d_output, sizeof(float) * batch_size * NUM_CLASSES,
+        cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_labels, d_labels, sizeof(int) * batch_size,
+        cudaMemcpyDeviceToHost);
 
     // Compute accuracy
     int correct = 0;
