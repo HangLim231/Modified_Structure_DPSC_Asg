@@ -17,8 +17,9 @@ Model::~Model() {
     cudaFree(d_fc_weights); cudaFree(d_fc_bias);
 }
 
+// Neural network model implementation
 void Model::initialize() {
-    // Example allocations (simplified sizes)
+    // Hardcoded network architecture sizes
     cudaMalloc(&d_weights1, sizeof(float) * 32 * 1 * 3 * 3);
     cudaMalloc(&d_bias1, sizeof(float) * 32);
     cudaMalloc(&d_weights2, sizeof(float) * 64 * 32 * 3 * 3);

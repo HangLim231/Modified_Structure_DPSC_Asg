@@ -6,15 +6,16 @@
 #include <cmath>
 using namespace std;
 
+// Kernel for 2D max pooling
 __global__ void maxpool2d_forward_kernel(
-    const float* input,
-    float* output,
+    const float* input, // input feature map (N x C x H x W)
+    float* output, // output feature map (N x C x H_out x W_out)
     int N, int C, int H, int W,
     int pool_size, int stride)
 {
-    int n = blockIdx.z;
-    int c = blockIdx.y;
-    int hw = blockIdx.x * blockDim.x + threadIdx.x;
+    int n = blockIdx.z; // Batch dimension
+    int c = blockIdx.y; // Output channel dimension
+    int hw = blockIdx.x * blockDim.x + threadIdx.x; // Spatial dimension
 
     int H_out = (H - pool_size) / stride + 1;
     int W_out = (W - pool_size) / stride + 1;
@@ -40,16 +41,17 @@ __global__ void maxpool2d_forward_kernel(
     output[output_idx] = max_val;
 }
 
+// Kernel for 2D max pooling
 void maxpool2d_forward(
     const float* d_input,
     float* d_output,
     int N, int C, int H, int W,
     int pool_size, int stride)
 {
-    int H_out = (H - pool_size) / stride + 1;
+    int H_out = (H - pool_size) / stride + 1; // No padding support
     int W_out = (W - pool_size) / stride + 1;
-    dim3 grid((H_out * W_out + 255) / 256, C, N);
-    dim3 block(256);
+    dim3 grid((H_out * W_out + 255) / 256, C, N); // Hardcoded fixed grid size
+    dim3 block(256); // Hardcoded fixed threads block size
 
     maxpool2d_forward_kernel << <grid, block >> > (
         d_input, d_output, N, C, H, W, pool_size, stride

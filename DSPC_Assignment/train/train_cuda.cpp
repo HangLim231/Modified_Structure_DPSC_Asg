@@ -1,5 +1,4 @@
 // Update: train/train_cuda.cpp
-
 #include "../include/model.h"
 #include "../include/loader.h"
 #include "../include/evaluate.h"

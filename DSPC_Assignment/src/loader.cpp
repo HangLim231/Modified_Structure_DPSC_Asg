@@ -5,6 +5,7 @@
 #include <iostream>
 using namespace std;
 
+// Function to load the CIFAR-10 dataset
 vector<Image> load_dataset(const vector<string>& batch_files) {
     vector<Image> dataset;
     const int record_size = 1 + 3072;
@@ -22,6 +23,7 @@ vector<Image> load_dataset(const vector<string>& batch_files) {
             img.label = buffer[0];
             img.pixels.resize(IMAGE_PIXELS);
 
+			// Convert RGB to grayscale 
             for (int i = 0; i < IMAGE_PIXELS; ++i) {
                 float r = static_cast<float>(buffer[1 + i]) / 255.0f;
                 float g = static_cast<float>(buffer[1 + i + 1024]) / 255.0f;

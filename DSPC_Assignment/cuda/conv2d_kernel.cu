@@ -6,17 +6,18 @@
 #include <cmath>
 using namespace std;
 
+// Kernel for 2D convolution forward pass
 __global__ void conv2d_forward_kernel(
-    const float* input,
-    const float* weights,
-    const float* bias,
-    float* output,
-    int N, int C_in, int H, int W,
+    const float* input, // input feature map (N x C_in x H x W)
+    const float* weights, // Convolutional Filter (C_out x C_in x K x K)
+    const float* bias, // Bias Terms (C_out)
+    float* output, // Output feature map (N x C_out x H_out x W_out)
+    int N, int C_in, int H, int W, // Input dimensions batch size, input_channels, height, width, output_channels, kernel size
     int C_out, int K)
 {
-    int n = blockIdx.z;
-    int co = blockIdx.y;
-    int hw = blockIdx.x * blockDim.x + threadIdx.x;
+    int n = blockIdx.z; // Batch dimension
+    int co = blockIdx.y; // Output channel dimension
+    int hw = blockIdx.x * blockDim.x + threadIdx.x; //Spatial dimension
 
     int H_out = H - K + 1;
     int W_out = W - K + 1;
@@ -27,6 +28,7 @@ __global__ void conv2d_forward_kernel(
 
     float sum = bias[co];
 
+    // Convolution operation
     for (int ci = 0; ci < C_in; ci++) {
         for (int p = 0; p < K; p++) {
             for (int q = 0; q < K; q++) {
@@ -43,6 +45,7 @@ __global__ void conv2d_forward_kernel(
     output[out_idx] = fmaxf(0.0f, sum);
 }
 
+// Kernel for 2D convolution forward pass
 void conv2d_forward(
     const float* d_input,
     const float* d_weights,

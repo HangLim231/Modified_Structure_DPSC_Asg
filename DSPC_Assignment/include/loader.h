@@ -9,8 +9,9 @@
 #define IMAGE_PIXELS (IMAGE_SIZE * IMAGE_SIZE)
 #define NUM_CLASSES 10
 
+// CIFAR-10 dataset structure
 struct Image {
-    std::vector<float> pixels; // Grayscale normalized
+    std::vector<float> pixels; // Stored RGB channels
     int label;
 };
 
