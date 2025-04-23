@@ -21,7 +21,8 @@ do { \
     if (error != cudaSuccess) { \
         cerr << "CUDA error at " << __FILE__ << ":" << __LINE__ << " - " \
              << cudaGetErrorString(error) << endl; \
-        return; \
+        cudaDeviceReset(); \
+        exit(EXIT_FAILURE); /* Exit program instead of just returning */ \
     } \
 } while(0)
 
@@ -66,8 +67,9 @@ void prepareBatch(const vector<Image>& dataset, const vector<int>& batch_indices
 
 // Function to evaluate model on a batch
 float evaluateBatch(float* d_input, int* d_labels, Model& model, int batch_size) {
+    // Allocate output memory based on the actual batch size
     float* d_output;
-    cudaMalloc(&d_output, sizeof(float) * batch_size * NUM_CLASSES);
+    CUDA_CHECK(cudaMalloc(&d_output, sizeof(float) * batch_size * NUM_CLASSES));
 
     // Forward pass
     model.forward(d_input, d_output, batch_size);
