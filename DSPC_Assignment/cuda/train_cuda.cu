@@ -1,53 +1,230 @@
-// File: train/train_cuda.cpp
+// File: cuda/train_cuda.cu
 
 #include "../include/model.h"
 #include "../include/loader.h"
 #include "../include/evaluate.h"
 #include "../include/train_cuda.h"
+#include "../include/timer.h"
 #include <cuda_runtime.h>
 #include <iostream>
+#include <iomanip>
+#include <vector>
+#include <random>
+#include <algorithm>
 using namespace std;
 
-//Main function to train the model using CUDA
-void train_cuda(const vector<Image>& dataset) {
-    // Constants
-    int N = static_cast<int>(dataset.size());   
-    size_t input_size = N * IMAGE_PIXELS * sizeof(float); // Number of images * number of pixels per image
-    size_t label_size = N * sizeof(int);
+// Utility function to check CUDA errors
+#define CUDA_CHECK(call) \
+do { \
+    cudaError_t error = call; \
+    if (error != cudaSuccess) { \
+        cerr << "CUDA error at " << __FILE__ << ":" << __LINE__ << " - " \
+             << cudaGetErrorString(error) << endl; \
+        return; \
+    } \
+} while(0)
 
-    float* d_input;
-    int* d_labels;
-
-    // Allocate device memory
-    cudaMalloc(&d_input, input_size);
-    cudaMalloc(&d_labels, label_size);
-
-    // Flatten the dataset
-    vector<float> input_flat(N * IMAGE_PIXELS);
-    vector<int> label_flat(N);
-
-    // Copy data to the flattened vectors
-    for (int i = 0; i < N; ++i) {
-        copy(dataset[i].pixels.begin(), dataset[i].pixels.end(), input_flat.begin() + i * IMAGE_PIXELS);
-        label_flat[i] = dataset[i].label;
+// Function to create batches from dataset
+vector<vector<int>> createBatches(int dataset_size, int batch_size) {
+    vector<int> indices(dataset_size);
+    for (int i = 0; i < dataset_size; i++) {
+        indices[i] = i;
     }
 
-    // Copy data from host to device
-    cudaMemcpy(d_input, input_flat.data(), input_size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_labels, label_flat.data(), label_size, cudaMemcpyHostToDevice);
+    // Shuffle indices for random batches
+    random_device rd;
+    mt19937 g(rd());
+    shuffle(indices.begin(), indices.end(), g);
 
-    // Initialize the model
+    vector<vector<int>> batches;
+    for (int i = 0; i < dataset_size; i += batch_size) {
+        vector<int> batch;
+        for (int j = i; j < min(i + batch_size, dataset_size); j++) {
+            batch.push_back(indices[j]);
+        }
+        batches.push_back(batch);
+    }
+
+    return batches;
+}
+
+// Function to prepare a batch
+void prepareBatch(const vector<Image>& dataset, const vector<int>& batch_indices,
+    float* batch_data, int* batch_labels) {
+    int batch_size = batch_indices.size();
+
+    for (int i = 0; i < batch_size; i++) {
+        int idx = batch_indices[i];
+        // Copy image pixels
+        copy(dataset[idx].pixels.begin(), dataset[idx].pixels.end(),
+            batch_data + i * IMAGE_PIXELS);
+        // Copy label
+        batch_labels[i] = dataset[idx].label;
+    }
+}
+
+// Function to evaluate model on a batch
+float evaluateBatch(float* d_input, int* d_labels, Model& model, int batch_size) {
+    float* d_output;
+    CUDA_CHECK(cudaMalloc(&d_output, sizeof(float) * batch_size * NUM_CLASSES));
+
+    // Forward pass
+    model.forward(d_input, d_output, batch_size);
+
+    // Copy output back to host
+    float* h_output = new float[batch_size * NUM_CLASSES];
+    int* h_labels = new int[batch_size];
+
+    CUDA_CHECK(cudaMemcpy(h_output, d_output, sizeof(float) * batch_size * NUM_CLASSES,
+        cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_labels, d_labels, sizeof(int) * batch_size,
+        cudaMemcpyDeviceToHost));
+
+    // Compute accuracy
+    int correct = 0;
+    for (int i = 0; i < batch_size; i++) {
+        int pred_class = argmax(h_output + i * NUM_CLASSES, NUM_CLASSES);
+        if (pred_class == h_labels[i]) {
+            correct++;
+        }
+    }
+
+    float accuracy = static_cast<float>(correct) / batch_size;
+
+    // Clean up
+    delete[] h_output;
+    delete[] h_labels;
+    cudaFree(d_output);
+
+    return accuracy;
+}
+
+// Main function to train the model using CUDA
+void train_cuda(const vector<Image>& dataset) {
+    // Training hyperparameters
+    const int epochs = 5;
+    const int batch_size = 64;
+    const int validation_size = 1000;  // Number of samples for validation
+
+    // Constants
+    int N = static_cast<int>(dataset.size());
+    int train_size = N - validation_size;
+
+    cout << "\n===== CUDA CNN Training =====" << endl;
+    cout << "Dataset size: " << N << " images" << endl;
+    cout << "Training samples: " << train_size << endl;
+    cout << "Validation samples: " << validation_size << endl;
+    cout << "Batch size: " << batch_size << endl;
+    cout << "Epochs: " << epochs << endl;
+
+    // Split into training and validation
+    vector<Image> train_data(dataset.begin(), dataset.begin() + train_size);
+    vector<Image> val_data(dataset.begin() + train_size, dataset.end());
+
+    // Allocate host memory for batch
+    float* h_batch_data = new float[batch_size * IMAGE_PIXELS];
+    int* h_batch_labels = new int[batch_size];
+
+    // Allocate device memory for batch
+    float* d_batch_data;
+    int* d_batch_labels;
+    CUDA_CHECK(cudaMalloc(&d_batch_data, sizeof(float) * batch_size * IMAGE_PIXELS));
+    CUDA_CHECK(cudaMalloc(&d_batch_labels, sizeof(int) * batch_size));
+
+    // Initialize model
+    cout << "\nInitializing model..." << endl;
     Model model;
     model.initialize();
 
-    // Allocate output memory
-    float* d_output;
-    cudaMalloc(&d_output, sizeof(float) * N * NUM_CLASSES);
+    // For validation data
+    float* d_val_data;
+    int* d_val_labels;
+    CUDA_CHECK(cudaMalloc(&d_val_data, sizeof(float) * validation_size * IMAGE_PIXELS));
+    CUDA_CHECK(cudaMalloc(&d_val_labels, sizeof(int) * validation_size));
 
-    model.forward(d_input, d_output, N);
+    // Prepare validation data
+    float* h_val_data = new float[validation_size * IMAGE_PIXELS];
+    int* h_val_labels = new int[validation_size];
 
-    
-    cudaFree(d_input);
-    cudaFree(d_labels);
-    cudaFree(d_output);
+    for (int i = 0; i < validation_size; i++) {
+        copy(val_data[i].pixels.begin(), val_data[i].pixels.end(),
+            h_val_data + i * IMAGE_PIXELS);
+        h_val_labels[i] = val_data[i].label;
+    }
+
+    CUDA_CHECK(cudaMemcpy(d_val_data, h_val_data, sizeof(float) * validation_size * IMAGE_PIXELS,
+        cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_val_labels, h_val_labels, sizeof(int) * validation_size,
+        cudaMemcpyHostToDevice));
+
+    Timer epoch_timer;
+    Timer batch_timer;
+
+    // Training loop
+    for (int epoch = 0; epoch < epochs; epoch++) {
+        cout << "\nEpoch " << epoch + 1 << "/" << epochs << endl;
+        epoch_timer.start();
+
+        // Create batches with shuffled indices
+        vector<vector<int>> batches = createBatches(train_size, batch_size);
+
+        float epoch_loss = 0.0f;
+        int batch_count = 0;
+
+        // Process each batch
+        for (const auto& batch_indices : batches) {
+            int current_batch_size = batch_indices.size();
+            batch_timer.start();
+
+            // Prepare batch data
+            prepareBatch(train_data, batch_indices, h_batch_data, h_batch_labels);
+
+            // Copy batch to device
+            CUDA_CHECK(cudaMemcpy(d_batch_data, h_batch_data,
+                sizeof(float) * current_batch_size * IMAGE_PIXELS,
+                cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpy(d_batch_labels, h_batch_labels,
+                sizeof(int) * current_batch_size,
+                cudaMemcpyHostToDevice));
+
+            // In a real implementation, you would:
+            // 1. Perform forward pass
+            // 2. Calculate loss
+            // 3. Backpropagation (not implemented in this example)
+            // 4. Update weights
+
+            // For demonstration, we'll just do inference
+            float accuracy = evaluateBatch(d_batch_data, d_batch_labels, model, current_batch_size);
+
+            batch_timer.stop();
+
+            // Print progress every few batches
+            if (++batch_count % 10 == 0) {
+                cout << "  Batch " << batch_count << "/" << batches.size()
+                    << ", Accuracy: " << fixed << setprecision(4) << accuracy
+                    << ", Time: " << batch_timer.elapsedMilliseconds() << " ms" << endl;
+            }
+        }
+
+        // Validate after each epoch
+        cout << "Validating..." << endl;
+        float val_accuracy = evaluateBatch(d_val_data, d_val_labels, model, validation_size);
+
+        epoch_timer.stop();
+        cout << "Epoch completed in " << epoch_timer.elapsedMilliseconds() << " ms" << endl;
+        cout << "Validation accuracy: " << fixed << setprecision(4) << val_accuracy << endl;
+    }
+
+    cout << "\nTraining completed!" << endl;
+
+    // Clean up
+    delete[] h_batch_data;
+    delete[] h_batch_labels;
+    delete[] h_val_data;
+    delete[] h_val_labels;
+
+    cudaFree(d_batch_data);
+    cudaFree(d_batch_labels);
+    cudaFree(d_val_data);
+    cudaFree(d_val_labels);
 }

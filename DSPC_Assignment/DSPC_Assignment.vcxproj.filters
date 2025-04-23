@@ -53,11 +53,23 @@
     <ClInclude Include="include\train_cuda.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="include\backprop.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\loss.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\optimizer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="cuda\conv2d_kernel.cu" />
     <CudaCompile Include="cuda\maxpooling_kernel.cu" />
     <CudaCompile Include="cuda\dense_layer.cu" />
     <CudaCompile Include="cuda\train_cuda.cu" />
+    <CudaCompile Include="cuda\backprop_kernel.cu" />
+    <CudaCompile Include="cuda\loss_kernel.cu" />
+    <CudaCompile Include="cuda\optimizer_kernel.cu" />
   </ItemGroup>
 </Project>

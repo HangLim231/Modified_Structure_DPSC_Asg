@@ -1,8 +1,11 @@
 // File: src/model.cpp
 
 #include "../include/model.h"
+#include "../include/timer.h"
 #include <cuda_runtime.h>
 #include <cstdlib>
+#include <iostream>
+#include <iomanip>
 using namespace std;
 
 Model::Model() : d_weights1(nullptr), d_bias1(nullptr),
@@ -17,40 +20,193 @@ Model::~Model() {
     cudaFree(d_fc_weights); cudaFree(d_fc_bias);
 }
 
-// Neural network model implementation
-void Model::initialize() {
-    // Hardcoded network architecture sizes
-    cudaMalloc(&d_weights1, sizeof(float) * 32 * 1 * 3 * 3);
-    cudaMalloc(&d_bias1, sizeof(float) * 32);
-    cudaMalloc(&d_weights2, sizeof(float) * 64 * 32 * 3 * 3);
-    cudaMalloc(&d_bias2, sizeof(float) * 64);
-    cudaMalloc(&d_weights3, sizeof(float) * 64 * 64 * 3 * 3);
-    cudaMalloc(&d_bias3, sizeof(float) * 64);
-    cudaMalloc(&d_fc_weights, sizeof(float) * 64 * 64);
-    cudaMalloc(&d_fc_bias, sizeof(float) * 64);
+// Helper function for weight initialization with proper scaling
+void initializeWeights(float* d_weights, size_t size, float scale) {
+    float* h_weights = new float[size];
+    for (int i = 0; i < size; i++) {
+        // He initialization (scaled for ReLU)
+        h_weights[i] = (rand() / static_cast<float>(RAND_MAX) - 0.5f) * scale;
+    }
+    cudaMemcpy(d_weights, h_weights, sizeof(float) * size, cudaMemcpyHostToDevice);
+    delete[] h_weights;
+}
 
-    // Bias initialization simplified
-    cudaMemset(d_bias1, 0, sizeof(float) * 32);
-    cudaMemset(d_bias2, 0, sizeof(float) * 64);
-    cudaMemset(d_bias3, 0, sizeof(float) * 64);
-    cudaMemset(d_fc_bias, 0, sizeof(float) * 64);
+void Model::initialize() {
+    cout << "Initializing model weights and biases..." << endl;
+
+    // Hardcoded network architecture sizes
+    // Conv1: 1 input channel, 32 output channels, 3x3 kernel
+    size_t weights1_size = 32 * 1 * 3 * 3;
+    cudaMalloc(&d_weights1, sizeof(float) * weights1_size);
+    cudaMalloc(&d_bias1, sizeof(float) * 32);
+
+    // Conv2: 32 input channels, 64 output channels, 3x3 kernel
+    size_t weights2_size = 64 * 32 * 3 * 3;
+    cudaMalloc(&d_weights2, sizeof(float) * weights2_size);
+    cudaMalloc(&d_bias2, sizeof(float) * 64);
+
+    // Conv3: 64 input channels, 64 output channels, 3x3 kernel
+    size_t weights3_size = 64 * 64 * 3 * 3;
+    cudaMalloc(&d_weights3, sizeof(float) * weights3_size);
+    cudaMalloc(&d_bias3, sizeof(float) * 64);
+
+    // Fully connected: 64*4*4 input features, 10 output classes
+    size_t fc_weights_size = 10 * (64 * 4 * 4); // After 3 convs + 2 pooling, final feature map is 4x4
+    cudaMalloc(&d_fc_weights, sizeof(float) * fc_weights_size);
+    cudaMalloc(&d_fc_bias, sizeof(float) * 10);
+
+    // Initialize weights with scaled random values
+    initializeWeights(d_weights1, weights1_size, sqrt(2.0f / (3 * 3)));
+    initializeWeights(d_weights2, weights2_size, sqrt(2.0f / (3 * 3 * 32)));
+    initializeWeights(d_weights3, weights3_size, sqrt(2.0f / (3 * 3 * 64)));
+    initializeWeights(d_fc_weights, fc_weights_size, sqrt(2.0f / (64 * 4 * 4)));
+
+    // Bias initialization to small positive values (to help ReLU units)
+    float* h_bias = new float[32];
+    for (int i = 0; i < 32; i++) h_bias[i] = 0.01f;
+    cudaMemcpy(d_bias1, h_bias, sizeof(float) * 32, cudaMemcpyHostToDevice);
+
+    delete[] h_bias;
+    h_bias = new float[64];
+    for (int i = 0; i < 64; i++) h_bias[i] = 0.01f;
+    cudaMemcpy(d_bias2, h_bias, sizeof(float) * 64, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_bias3, h_bias, sizeof(float) * 64, cudaMemcpyHostToDevice);
+    delete[] h_bias;
+
+    h_bias = new float[10];
+    for (int i = 0; i < 10; i++) h_bias[i] = 0.01f;
+    cudaMemcpy(d_fc_bias, h_bias, sizeof(float) * 10, cudaMemcpyHostToDevice);
+    delete[] h_bias;
+
+    cout << "Model architecture:" << endl;
+    cout << "  * Input: 1x32x32" << endl;
+    cout << "  * Conv1: 32 filters of 3x3 -> 32x30x30" << endl;
+    cout << "  * Pool1: 2x2 stride 2 -> 32x15x15" << endl;
+    cout << "  * Conv2: 64 filters of 3x3 -> 64x13x13" << endl;
+    cout << "  * Pool2: 2x2 stride 2 -> 64x6x6" << endl;
+    cout << "  * Conv3: 64 filters of 3x3 -> 64x4x4" << endl;
+    cout << "  * FC: 10 outputs (classes)" << endl;
 }
 
 void Model::forward(const float* input, float* output, int N) {
-    // Simplified model pipeline example
-    // input assumed as N x 1 x 32 x 32 (grayscale)
+    // Full CNN forward pass implementation
+    Timer layer_timer;
 
-    int C_in = 1, C_out1 = 32, K = 3;
-    int H = 32, W = 32;
+    // Network dimensions
+    const int C_in = 1;  // Grayscale input
+    const int H_in = 32, W_in = 32;  // Input dimensions
+    const int K = 3;     // Kernel size
 
-    float* d_intermediate1;
-    cudaMalloc(&d_intermediate1, sizeof(float) * N * C_out1 * (H - K + 1) * (W - K + 1));
+    // Conv1 dimensions (32 filters)
+    const int C_out1 = 32;
+    const int H_out1 = H_in - K + 1;  // 30
+    const int W_out1 = W_in - K + 1;  // 30
 
-    layers::conv2d_forward(input, d_weights1, d_bias1, d_intermediate1, N, C_in, H, W, C_out1, K);
+    // Pool1 dimensions
+    const int pool_size = 2;
+    const int stride = 2;
+    const int H_pool1 = (H_out1 - pool_size) / stride + 1;  // 15
+    const int W_pool1 = (W_out1 - pool_size) / stride + 1;  // 15
 
-    // Pooling, Second Conv, Dense ... simplified.
+    // Conv2 dimensions (64 filters)
+    const int C_out2 = 64;
+    const int H_out2 = H_pool1 - K + 1;  // 13
+    const int W_out2 = W_pool1 - K + 1;  // 13
 
-    cudaMemcpy(output, d_intermediate1, sizeof(float) * N * C_out1 * (H - K + 1) * (W - K + 1), cudaMemcpyDeviceToDevice);
+    // Pool2 dimensions
+    const int H_pool2 = (H_out2 - pool_size) / stride + 1;  // 6
+    const int W_pool2 = (W_out2 - pool_size) / stride + 1;  // 6
 
-    cudaFree(d_intermediate1);
+    // Conv3 dimensions (64 filters)
+    const int C_out3 = 64;
+    const int H_out3 = H_pool2 - K + 1;  // 4
+    const int W_out3 = W_pool2 - K + 1;  // 4
+
+    // FC dimensions
+    const int fc_input_size = C_out3 * H_out3 * W_out3;  // 64*4*4 = 1024
+    const int fc_output_size = 10;  // 10 classes (CIFAR-10)
+
+    // Allocate memory for intermediate results
+    float* d_conv1, * d_pool1, * d_conv2, * d_pool2, * d_conv3, * d_flattened;
+    cudaMalloc(&d_conv1, sizeof(float) * N * C_out1 * H_out1 * W_out1);
+    cudaMalloc(&d_pool1, sizeof(float) * N * C_out1 * H_pool1 * W_pool1);
+    cudaMalloc(&d_conv2, sizeof(float) * N * C_out2 * H_out2 * W_out2);
+    cudaMalloc(&d_pool2, sizeof(float) * N * C_out2 * H_pool2 * W_pool2);
+    cudaMalloc(&d_conv3, sizeof(float) * N * C_out3 * H_out3 * W_out3);
+    cudaMalloc(&d_flattened, sizeof(float) * N * fc_input_size);
+
+    // Layer 1: Convolution
+    cout << "Executing Conv1: " << C_in << "x" << H_in << "x" << W_in << " -> "
+        << C_out1 << "x" << H_out1 << "x" << W_out1 << endl;
+    layer_timer.start();
+    layers::conv2d_forward(input, d_weights1, d_bias1, d_conv1,
+        N, C_in, H_in, W_in, C_out1, K);
+    cudaDeviceSynchronize();
+    layer_timer.stop();
+    cout << "Conv1 time: " << fixed << setprecision(2)
+        << layer_timer.elapsedMilliseconds() << " ms" << endl;
+
+    // Layer 2: Max Pooling
+    cout << "Executing Pool1: " << C_out1 << "x" << H_out1 << "x" << W_out1 << " -> "
+        << C_out1 << "x" << H_pool1 << "x" << W_pool1 << endl;
+    layer_timer.start();
+    layers::maxpool2d_forward(d_conv1, d_pool1, N, C_out1, H_out1, W_out1, pool_size, stride);
+    cudaDeviceSynchronize();
+    layer_timer.stop();
+    cout << "Pool1 time: " << fixed << setprecision(2)
+        << layer_timer.elapsedMilliseconds() << " ms" << endl;
+
+    // Layer 3: Convolution
+    cout << "Executing Conv2: " << C_out1 << "x" << H_pool1 << "x" << W_pool1 << " -> "
+        << C_out2 << "x" << H_out2 << "x" << W_out2 << endl;
+    layer_timer.start();
+    layers::conv2d_forward(d_pool1, d_weights2, d_bias2, d_conv2,
+        N, C_out1, H_pool1, W_pool1, C_out2, K);
+    cudaDeviceSynchronize();
+    layer_timer.stop();
+    cout << "Conv2 time: " << fixed << setprecision(2)
+        << layer_timer.elapsedMilliseconds() << " ms" << endl;
+
+    // Layer 4: Max Pooling
+    cout << "Executing Pool2: " << C_out2 << "x" << H_out2 << "x" << W_out2 << " -> "
+        << C_out2 << "x" << H_pool2 << "x" << W_pool2 << endl;
+    layer_timer.start();
+    layers::maxpool2d_forward(d_conv2, d_pool2, N, C_out2, H_out2, W_out2, pool_size, stride);
+    cudaDeviceSynchronize();
+    layer_timer.stop();
+    cout << "Pool2 time: " << fixed << setprecision(2)
+        << layer_timer.elapsedMilliseconds() << " ms" << endl;
+
+    // Layer 5: Convolution
+    cout << "Executing Conv3: " << C_out2 << "x" << H_pool2 << "x" << W_pool2 << " -> "
+        << C_out3 << "x" << H_out3 << "x" << W_out3 << endl;
+    layer_timer.start();
+    layers::conv2d_forward(d_pool2, d_weights3, d_bias3, d_conv3,
+        N, C_out2, H_pool2, W_pool2, C_out3, K);
+    cudaDeviceSynchronize();
+    layer_timer.stop();
+    cout << "Conv3 time: " << fixed << setprecision(2)
+        << layer_timer.elapsedMilliseconds() << " ms" << endl;
+
+    // Reshape for fully connected layer (flatten operation)
+    // Note: In CUDA, we need a custom kernel for this, but for simplicity
+    // we're treating the data as already flattened and just using a pointer alias
+    float* d_flattened_view = d_conv3; // In a real implementation, you'd need a flatten kernel
+
+    // Layer 6: Fully connected
+    cout << "Executing FC: " << fc_input_size << " -> " << fc_output_size << endl;
+    layer_timer.start();
+    layers::dense_forward(d_flattened_view, d_fc_weights, d_fc_bias, output,
+        N, fc_input_size, fc_output_size);
+    cudaDeviceSynchronize();
+    layer_timer.stop();
+    cout << "FC time: " << fixed << setprecision(2)
+        << layer_timer.elapsedMilliseconds() << " ms" << endl;
+
+    // Free intermediate buffers
+    cudaFree(d_conv1);
+    cudaFree(d_pool1);
+    cudaFree(d_conv2);
+    cudaFree(d_pool2);
+    cudaFree(d_conv3);
 }

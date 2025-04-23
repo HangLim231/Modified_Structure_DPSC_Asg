@@ -144,17 +144,23 @@
     <ClCompile Include="src\timer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\backprop.h" />
     <ClInclude Include="include\evaluate.h" />
     <ClInclude Include="include\layers.h" />
     <ClInclude Include="include\loader.h" />
+    <ClInclude Include="include\loss.h" />
     <ClInclude Include="include\model.h" />
+    <ClInclude Include="include\optimizer.h" />
     <ClInclude Include="include\timer.h" />
     <ClInclude Include="include\train_cuda.h" />
   </ItemGroup>
   <ItemGroup>
+    <CudaCompile Include="cuda\backprop_kernel.cu" />
     <CudaCompile Include="cuda\conv2d_kernel.cu" />
     <CudaCompile Include="cuda\dense_layer.cu" />
+    <CudaCompile Include="cuda\loss_kernel.cu" />
     <CudaCompile Include="cuda\maxpooling_kernel.cu" />
+    <CudaCompile Include="cuda\optimizer_kernel.cu" />
     <CudaCompile Include="cuda\train_cuda.cu" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
