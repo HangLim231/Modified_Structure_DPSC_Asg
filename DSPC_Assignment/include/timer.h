@@ -10,7 +10,7 @@ public:
     Timer();
     void start();   // Start the timer
     void stop();    // Stop the timer
-    double elapsedMilliseconds() const; // Get elapsed time in milliseconds
+    double elapsedSeconds() const; // Get elapsed time in seconds
 private:
     std::chrono::high_resolution_clock::time_point start_time;
     std::chrono::high_resolution_clock::time_point end_time;

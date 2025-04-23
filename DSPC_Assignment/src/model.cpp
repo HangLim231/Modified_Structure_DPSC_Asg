@@ -7,6 +7,7 @@
 #include <iostream>
 #include <iomanip>
 using namespace std;
+using namespace layers;
 
 Model::Model() : d_weights1(nullptr), d_bias1(nullptr),
 d_weights2(nullptr), d_bias2(nullptr),
@@ -135,73 +136,28 @@ void Model::forward(const float* input, float* output, int N) {
     cudaMalloc(&d_conv3, sizeof(float) * N * C_out3 * H_out3 * W_out3);
     cudaMalloc(&d_flattened, sizeof(float) * N * fc_input_size);
 
-    // Layer 1: Convolution
-    cout << "Executing Conv1: " << C_in << "x" << H_in << "x" << W_in << " -> "
-        << C_out1 << "x" << H_out1 << "x" << W_out1 << endl;
-    layer_timer.start();
-    layers::conv2d_forward(input, d_weights1, d_bias1, d_conv1,
+    //Layer 1: Convolution
+    conv2d_forward(input, d_weights1, d_bias1, d_conv1,
         N, C_in, H_in, W_in, C_out1, K);
-    cudaDeviceSynchronize();
-    layer_timer.stop();
-    cout << "Conv1 time: " << fixed << setprecision(2)
-        << layer_timer.elapsedMilliseconds() << " ms" << endl;
 
-    // Layer 2: Max Pooling
-    cout << "Executing Pool1: " << C_out1 << "x" << H_out1 << "x" << W_out1 << " -> "
-        << C_out1 << "x" << H_pool1 << "x" << W_pool1 << endl;
-    layer_timer.start();
-    layers::maxpool2d_forward(d_conv1, d_pool1, N, C_out1, H_out1, W_out1, pool_size, stride);
-    cudaDeviceSynchronize();
-    layer_timer.stop();
-    cout << "Pool1 time: " << fixed << setprecision(2)
-        << layer_timer.elapsedMilliseconds() << " ms" << endl;
+    //Layer 2: Max Pooling
+    maxpool2d_forward(d_conv1, d_pool1, N, C_out1, H_out1, W_out1, pool_size, stride);
 
-    // Layer 3: Convolution
-    cout << "Executing Conv2: " << C_out1 << "x" << H_pool1 << "x" << W_pool1 << " -> "
-        << C_out2 << "x" << H_out2 << "x" << W_out2 << endl;
-    layer_timer.start();
-    layers::conv2d_forward(d_pool1, d_weights2, d_bias2, d_conv2,
+    //Layer 3: Convolution
+    conv2d_forward(d_pool1, d_weights2, d_bias2, d_conv2,
         N, C_out1, H_pool1, W_pool1, C_out2, K);
-    cudaDeviceSynchronize();
-    layer_timer.stop();
-    cout << "Conv2 time: " << fixed << setprecision(2)
-        << layer_timer.elapsedMilliseconds() << " ms" << endl;
 
-    // Layer 4: Max Pooling
-    cout << "Executing Pool2: " << C_out2 << "x" << H_out2 << "x" << W_out2 << " -> "
-        << C_out2 << "x" << H_pool2 << "x" << W_pool2 << endl;
-    layer_timer.start();
-    layers::maxpool2d_forward(d_conv2, d_pool2, N, C_out2, H_out2, W_out2, pool_size, stride);
-    cudaDeviceSynchronize();
-    layer_timer.stop();
-    cout << "Pool2 time: " << fixed << setprecision(2)
-        << layer_timer.elapsedMilliseconds() << " ms" << endl;
+    //Layer 4: Max Pooling
+    maxpool2d_forward(d_conv2, d_pool2, N, C_out2, H_out2, W_out2, pool_size, stride);
 
-    // Layer 5: Convolution
-    cout << "Executing Conv3: " << C_out2 << "x" << H_pool2 << "x" << W_pool2 << " -> "
-        << C_out3 << "x" << H_out3 << "x" << W_out3 << endl;
-    layer_timer.start();
-    layers::conv2d_forward(d_pool2, d_weights3, d_bias3, d_conv3,
+    //Layer 5: Convolution
+    conv2d_forward(d_pool2, d_weights3, d_bias3, d_conv3,
         N, C_out2, H_pool2, W_pool2, C_out3, K);
-    cudaDeviceSynchronize();
-    layer_timer.stop();
-    cout << "Conv3 time: " << fixed << setprecision(2)
-        << layer_timer.elapsedMilliseconds() << " ms" << endl;
 
-    // Reshape for fully connected layer (flatten operation)
-    // Note: In CUDA, we need a custom kernel for this, but for simplicity
-    // we're treating the data as already flattened and just using a pointer alias
-    float* d_flattened_view = d_conv3; // In a real implementation, you'd need a flatten kernel
-
-    // Layer 6: Fully connected
-    cout << "Executing FC: " << fc_input_size << " -> " << fc_output_size << endl;
-    layer_timer.start();
-    layers::dense_forward(d_flattened_view, d_fc_weights, d_fc_bias, output,
+    //Layer 6: Flattening, Fully Connected Layer
+    float* d_flattened_view = d_conv3;
+    dense_forward(d_flattened_view, d_fc_weights, d_fc_bias, output,
         N, fc_input_size, fc_output_size);
-    cudaDeviceSynchronize();
-    layer_timer.stop();
-    cout << "FC time: " << fixed << setprecision(2)
-        << layer_timer.elapsedMilliseconds() << " ms" << endl;
 
     // Free intermediate buffers
     cudaFree(d_conv1);
