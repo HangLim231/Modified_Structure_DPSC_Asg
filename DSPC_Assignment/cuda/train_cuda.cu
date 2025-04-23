@@ -11,6 +11,7 @@
 #include <vector>
 #include <random>
 #include <algorithm>
+#include "../include/loss.h"
 using namespace std;
 
 // Utility function to check CUDA errors
@@ -99,6 +100,38 @@ float evaluateBatch(float* d_input, int* d_labels, Model& model, int batch_size)
     return accuracy;
 }
 
+
+// Function to train model on a batch
+void trainBatch(float* d_input, int* d_labels, Model& model, int batch_size, float learning_rate, float momentum) {
+    // Allocate memory for network output
+    float* d_output;
+    cudaMalloc(&d_output, sizeof(float) * batch_size * NUM_CLASSES);
+
+    // Forward pass
+    model.forward(d_input, d_output, batch_size);
+
+    // Allocate memory for loss values and gradients
+    float* d_losses;
+    float* d_gradients;
+    cudaMalloc(&d_losses, sizeof(float) * batch_size);
+    cudaMalloc(&d_gradients, sizeof(float) * batch_size * NUM_CLASSES);
+
+    // Compute loss and its gradients
+    float loss = compute_loss(d_output, d_labels, d_losses, batch_size, NUM_CLASSES);
+    compute_loss_gradients(d_output, d_labels, d_gradients, batch_size, NUM_CLASSES);
+
+    // Backward pass through the network
+    model.backward(d_input, d_gradients, batch_size);
+
+    // Update model parameters using SGD with momentum
+    model.update(learning_rate, momentum);
+
+    // Clean up
+    cudaFree(d_output);
+    cudaFree(d_losses);
+    cudaFree(d_gradients);
+}
+
 // Main function to train the model using CUDA
 void train_cuda(const vector<Image>& dataset) {
     // Training hyperparameters
@@ -173,7 +206,7 @@ void train_cuda(const vector<Image>& dataset) {
             const auto& batch_indices = batches[batch_idx];
             int current_batch_size = batch_indices.size();
 
-            // Prepare and process batch
+            // Prepare batch
             prepareBatch(train_data, batch_indices, h_batch_data, h_batch_labels);
             CUDA_CHECK(cudaMemcpy(d_batch_data, h_batch_data,
                 sizeof(float) * current_batch_size * IMAGE_PIXELS,
@@ -182,6 +215,12 @@ void train_cuda(const vector<Image>& dataset) {
                 sizeof(int) * current_batch_size,
                 cudaMemcpyHostToDevice));
 
+            // Train on the batch
+            float learning_rate = 0.01f;  // You may want to adjust this or implement learning rate decay
+            float momentum = 0.9f;        // Typical momentum value
+            trainBatch(d_batch_data, d_batch_labels, model, current_batch_size, learning_rate, momentum);
+
+            // Evaluate the batch for progress tracking
             float batch_accuracy = evaluateBatch(d_batch_data, d_batch_labels, model, current_batch_size);
             epoch_accuracy += batch_accuracy;
 
@@ -211,7 +250,7 @@ void train_cuda(const vector<Image>& dataset) {
     delete[] h_batch_labels;
     delete[] h_val_data;
     delete[] h_val_labels;
-
+        
     cudaFree(d_batch_data);
     cudaFree(d_batch_labels);
     cudaFree(d_val_data);
